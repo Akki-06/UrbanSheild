@@ -1,62 +1,28 @@
 import requests
 from django.conf import settings
 from apps.disasters.models import Disaster
+from apps.core.utils import is_within_uttarakhand
 
 
-# Optimized India Monitoring Points (Under API Limit)
-INDIA_MONITORING_POINTS = [
-    # North
-    (30.7333, 76.7794),  # Chandigarh
-    (34.0837, 74.7973),  # Srinagar
-    (28.6139, 77.2090),  # Delhi
+def fetch_uttarakhand_weather_disasters():
 
-    # Northeast
-    (26.1445, 91.7362),  # Guwahati
-    (27.0844, 93.6053),  # Arunachal
-
-    # East
-    (22.5726, 88.3639),  # Kolkata
-    (23.3441, 85.3096),  # Jharkhand
-
-    # Central
-    (23.2599, 77.4126),  # Bhopal
-    (21.1458, 79.0882),  # Nagpur
-
-    # West
-    (19.0760, 72.8777),  # Mumbai
-    (23.0225, 72.5714),  # Ahmedabad
-
-    # South
-    (13.0827, 80.2707),  # Chennai
-    (12.9716, 77.5946),  # Bengaluru
-    (17.3850, 78.4867),  # Hyderabad
-
-    # Coastal Cyclone Belt
-    (15.9129, 79.7400),  # Andhra Coast
-    (21.1702, 72.8311),  # Gujarat Coast
-    (10.8505, 76.2711),  # Kerala
-
-    # Heat Belt
-    (26.9124, 75.7873),  # Jaipur
-    (25.4358, 81.8463),  # Prayagraj
-
-    # Additional Spread
-    (24.5854, 73.7125),  # Udaipur
-    (11.0168, 76.9558),  # Coimbatore
-    (18.5204, 73.8567),  # Pune
-]
-
-
-def fetch_india_weather_disasters():
     api_key = settings.OPENWEATHER_API_KEY
 
-    created = {
-        "flood": 0,
-        "heatwave": 0,
-        "cyclone": 0
-    }
+    # Major Uttarakhand monitoring points
+    cities = [
+        ("Dehradun", 30.3165, 78.0322),
+        ("Haridwar", 29.9457, 78.1642),
+        ("Rishikesh", 30.0869, 78.2676),
+        ("Nainital", 29.3803, 79.4636),
+        ("Haldwani", 29.2183, 79.5120),
+    ]
 
-    for lat, lon in INDIA_MONITORING_POINTS:
+    created = 0
+
+    for city, lat, lon in cities:
+
+        if not is_within_uttarakhand(lat, lon):
+            continue
 
         url = "https://api.openweathermap.org/data/2.5/weather"
 
@@ -67,77 +33,36 @@ def fetch_india_weather_disasters():
             "units": "metric"
         }
 
-        response = requests.get(url, params=params, timeout=5)
-
-        if response.status_code != 200:
+        try:
+            response = requests.get(url, params=params, timeout=5)
+            data = response.json()
+        except:
             continue
 
-        data = response.json()
-
-        # ---------------- FLOOD ----------------
-        rainfall = data.get("rain", {}).get("1h", 0)
-
-        if rainfall >= 25:
-            if not Disaster.objects.filter(
+        # 🌧 Heavy Rain → Flood
+        rain = data.get("rain", {}).get("1h", 0)
+        if rain >= 50:
+            Disaster.objects.create(
                 disaster_type="flood",
                 latitude=lat,
                 longitude=lon,
+                severity=8,
+                confidence_score=0.9,
                 status="active"
-            ).exists():
+            )
+            created += 1
 
-                Disaster.objects.create(
-                    disaster_type="flood",
-                    latitude=lat,
-                    longitude=lon,
-                    severity=8,
-                    confidence_score=0.9,
-                    status="active"
-                )
-
-                created["flood"] += 1
-
-        # ---------------- HEATWAVE ----------------
+        # 🔥 Heatwave
         temp = data.get("main", {}).get("temp", 0)
-
         if temp >= 45:
-            if not Disaster.objects.filter(
+            Disaster.objects.create(
                 disaster_type="heatwave",
                 latitude=lat,
                 longitude=lon,
+                severity=9 if temp >= 48 else 7,
+                confidence_score=0.95,
                 status="active"
-            ).exists():
+            )
+            created += 1
 
-                Disaster.objects.create(
-                    disaster_type="heatwave",
-                    latitude=lat,
-                    longitude=lon,
-                    severity=9,
-                    confidence_score=0.95,
-                    status="active"
-                )
-
-                created["heatwave"] += 1
-
-        # ---------------- CYCLONE ----------------
-        description = data.get("weather", [{}])[0].get("description", "").lower()
-
-        if "storm" in description or "cyclone" in description:
-            if not Disaster.objects.filter(
-                disaster_type="cyclone",
-                latitude=lat,
-                longitude=lon,
-                status="active"
-            ).exists():
-
-                Disaster.objects.create(
-                    disaster_type="cyclone",
-                    latitude=lat,
-                    longitude=lon,
-                    severity=9,
-                    confidence_score=0.95,
-                    status="active"
-                )
-
-                created["cyclone"] += 1
-
-    return created
+    return {"weather_disasters_added": created}

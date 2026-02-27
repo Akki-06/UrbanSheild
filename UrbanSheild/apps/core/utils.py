@@ -1,5 +1,19 @@
 import math
 
+UTTARAKHAND_BOUNDS = {
+    "min_lat": 28.43,
+    "max_lat": 31.46,
+    "min_lon": 77.73,
+    "max_lon": 81.02,
+}
+
+
+def is_within_uttarakhand(lat, lon):
+    return (
+        UTTARAKHAND_BOUNDS["min_lat"] <= lat <= UTTARAKHAND_BOUNDS["max_lat"]
+        and
+        UTTARAKHAND_BOUNDS["min_lon"] <= lon <= UTTARAKHAND_BOUNDS["max_lon"]
+    )
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Earth radius in km
