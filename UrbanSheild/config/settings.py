@@ -12,14 +12,22 @@ TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY")
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+from datetime import timedelta
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
 
-# SECURITY WARNING: keep the secret key used in production secret!
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+}
+
+
 SECRET_KEY = 'django-insecure-r9h74vgl*l)9#*!2pt!j2z88w*(*@h8!k^&^5&ha=yi@82pa=7'
 
-# SECURITY WARNING: don't run with debug turned on in production!
+
 DEBUG = True
 
 ALLOWED_HOSTS = []
@@ -46,6 +54,7 @@ INSTALLED_APPS = [
     'apps.authorities',
     'apps.analytics',
     'apps.core',
+    'apps.accounts',
 ]
 
 MIDDLEWARE = [
