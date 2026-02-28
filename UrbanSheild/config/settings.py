@@ -8,6 +8,7 @@ load_dotenv()
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -145,5 +146,10 @@ EMAIL_USE_TLS = True
 
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+EMAIL_TEST_RECIPIENT = os.getenv("EMAIL_TEST_RECIPIENT")
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+# Developer-friendly fallback: if no creds present, log emails to console
+if DEBUG and (not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD):
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

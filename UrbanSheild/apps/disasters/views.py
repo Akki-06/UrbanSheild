@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 
 from django.core.mail import send_mail
+from django.conf import settings
 
 from .models import Disaster, EscalationLog
 from .serializers import DisasterSerializer, EscalationLogSerializer
@@ -28,12 +29,25 @@ class DisasterViewSet(viewsets.ModelViewSet):
     # 🔒 Restrict disasters to Uttarakhand
     # ----------------------------------------
     def get_queryset(self):
-        return Disaster.objects.filter(
+        queryset = Disaster.objects.filter(
             latitude__gte=UTTARAKHAND_BOUNDS["min_lat"],
             latitude__lte=UTTARAKHAND_BOUNDS["max_lat"],
             longitude__gte=UTTARAKHAND_BOUNDS["min_lon"],
             longitude__lte=UTTARAKHAND_BOUNDS["max_lon"],
         ).order_by("-created_at")
+
+        try:
+            lat = float(self.request.query_params.get("lat"))
+            lon = float(self.request.query_params.get("lon"))
+            radius_km = float(self.request.query_params.get("radius", 10))
+        except (TypeError, ValueError):
+            return queryset
+
+        in_radius_ids = [
+            d.id for d in queryset
+            if haversine(lat, lon, d.latitude, d.longitude) <= radius_km
+        ]
+        return queryset.filter(id__in=in_radius_ids).order_by("-created_at")
 
     # ----------------------------------------
     # 🔒 Prevent creation outside Uttarakhand
@@ -161,23 +175,32 @@ class DisasterViewSet(viewsets.ModelViewSet):
         if not nearest_authority:
             return Response({"error": "No authority found"}, status=400)
 
-        send_mail(
-            subject=f"Emergency Alert - {disaster.disaster_type.upper()}",
-            message=f"""
+        recipient = getattr(settings, "EMAIL_TEST_RECIPIENT", None) or nearest_authority.email
+
+        email_sent = False
+        try:
+            send_mail(
+                subject=f"Emergency Alert - {disaster.disaster_type.upper()}",
+                message=f"""
 Disaster Type: {disaster.disaster_type}
 Severity: {disaster.severity}
 Location: {lat}, {lon}
 Status: {disaster.status}
 Immediate action recommended.
 """,
-            from_email=None,
-            recipient_list=[nearest_authority.email],
-        )
+                from_email=None,
+                recipient_list=[recipient],
+                fail_silently=False,
+            )
+            email_sent = True
+        except Exception as exc:
+            # Log but continue to record escalation
+            email_sent = False
 
         EscalationLog.objects.create(
             disaster=disaster,
             authority_name=nearest_authority.name,
-            email_sent=True,
+            email_sent=email_sent,
         )
 
         return Response({

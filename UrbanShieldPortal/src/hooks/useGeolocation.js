@@ -7,7 +7,7 @@ import api from '../api/axios'
  */
 export function useGeolocation(shouldTrack = true) {
   const watchIdRef = useRef(null)
-  const lastUpdateRef = useRef(Date.now())
+  const lastUpdateRef = useRef(0)
 
   useEffect(() => {
     if (!shouldTrack || !navigator.geolocation) {

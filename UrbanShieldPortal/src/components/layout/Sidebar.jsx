@@ -1,22 +1,23 @@
 import { useNavigate, useLocation } from "react-router-dom"
-import { FaMapMarkedAlt, FaExclamationTriangle, FaChartBar, FaSignOutAlt } from "react-icons/fa"
+import { FaMapMarkedAlt, FaExclamationTriangle, FaChartBar } from "react-icons/fa"
 import { useAuth } from "../../context/AuthContext"
 
-export default function Sidebar() {
+export default function Sidebar({ hidden = false }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout } = useAuth()
+  const { user } = useAuth()
 
   const navItems = [
-    { path: "/", icon: FaMapMarkedAlt, label: "Live Monitor" },
+    { path: "/map", icon: FaMapMarkedAlt, label: "Live Monitor" },
     { path: "/incidents", icon: FaExclamationTriangle, label: "Incidents" },
     { path: "/analytics", icon: FaChartBar, label: "Analytics" }
   ]
 
-  const handleLogout = () => {
-    logout()
-    navigate("/login")
+  if (user?.isAdmin) {
+    navItems.push({ path: "/alerts-sent", icon: FaExclamationTriangle, label: "Alerts Sent" })
   }
+
+  if (hidden) return null
 
   return (
     <aside className="sidebar">
@@ -34,6 +35,13 @@ export default function Sidebar() {
           </a>
         ))}
       </nav>
+
+      <div className="sidebar-user">
+        <div className="sidebar-user-name">
+          {user?.username || "Guest"}
+          {user?.isAdmin ? " (admin)" : ""}
+        </div>
+      </div>
     </aside>
   )
 }

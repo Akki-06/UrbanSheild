@@ -3,7 +3,7 @@ import { FaExclamationTriangle, FaTimes, FaMapMarkerAlt, FaArrowRight } from 're
 import api from '../../api/axios'
 import '../../styles/alerts.css'
 
-export default function DisasterAlerts() {
+export default function DisasterAlerts({ hidden = false }) {
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedAlert, setSelectedAlert] = useState(null)
@@ -53,7 +53,7 @@ export default function DisasterAlerts() {
     }
   }
 
-  if (alerts.length === 0 && !loading) {
+  if (hidden || (alerts.length === 0 && !loading)) {
     return null
   }
 

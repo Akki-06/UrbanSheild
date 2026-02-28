@@ -9,7 +9,7 @@ import "../styles/auth.css"
 
 export default function Register() {
   const navigate = useNavigate()
-  const { setIsLoggedIn } = useAuth()
+  const { setIsLoggedIn, setUser } = useAuth()
   const [formData, setFormData] = useState({
     username: "",
     email: "",
@@ -65,9 +65,15 @@ export default function Register() {
 
       localStorage.setItem("access_token", tokenResponse.data.access)
       localStorage.setItem("refresh_token", tokenResponse.data.refresh)
+      const isAdmin = formData.role === "regional_admin"
+      localStorage.setItem("user_meta", JSON.stringify({
+        username: formData.username,
+        isAdmin
+      }))
 
       // Update auth state
       setIsLoggedIn(true)
+      setUser({ username: formData.username, isAdmin })
 
       navigate("/")
     } catch (err) {

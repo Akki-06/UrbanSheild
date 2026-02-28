@@ -8,11 +8,18 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is already logged in
     const token = localStorage.getItem("access_token")
+    const storedUser = localStorage.getItem("user_meta")
     if (token) {
       setIsLoggedIn(true)
-      // Could fetch user details here if needed
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser)
+          setUser(parsed)
+        } catch {
+          setUser(null)
+        }
+      }
     }
     setLoading(false)
   }, [])
@@ -20,6 +27,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")
+    localStorage.removeItem("user_meta")
     setIsLoggedIn(false)
     setUser(null)
   }

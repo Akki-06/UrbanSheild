@@ -499,3 +499,62 @@ form {
     max-width: 100%;
   }
 }
+
+[data-theme="dark"] .auth-container {
+  background: radial-gradient(900px 500px at 0% -10%, rgba(56, 189, 248, 0.2), transparent 55%),
+    radial-gradient(800px 500px at 100% 0%, rgba(168, 85, 247, 0.22), transparent 45%),
+    linear-gradient(140deg, #060b14, #0e1527 55%, #14112a);
+}
+
+[data-theme="dark"] .auth-logo,
+[data-theme="dark"] .auth-card h1,
+[data-theme="dark"] .form-group label,
+[data-theme="dark"] .role-selector label,
+[data-theme="dark"] .role-title {
+  color: #e5edf9;
+}
+
+[data-theme="dark"] .auth-nav,
+[data-theme="dark"] .auth-subtitle,
+[data-theme="dark"] .help-text,
+[data-theme="dark"] .checkbox-group label,
+[data-theme="dark"] .role-desc,
+[data-theme="dark"] .auth-footer,
+[data-theme="dark"] .auth-footer-links a {
+  color: #a9bad8;
+}
+
+[data-theme="dark"] .auth-card {
+  background: rgba(18, 27, 46, 0.86);
+  border: 1px solid #253654;
+  box-shadow: 0 18px 40px rgba(2, 8, 20, 0.6);
+}
+
+[data-theme="dark"] .input-wrapper input,
+[data-theme="dark"] .role-btn,
+[data-theme="dark"] .google-btn {
+  background: #111a2f;
+  border-color: #273754;
+  color: #d9e8ff;
+}
+
+[data-theme="dark"] .input-wrapper input:focus {
+  background: #0d1629;
+  border-color: #60a5fa;
+}
+
+[data-theme="dark"] .role-btn.active {
+  border-color: #60a5fa;
+  background: #0f223f;
+}
+
+[data-theme="dark"] .auth-divider::before,
+[data-theme="dark"] .auth-footer,
+[data-theme="dark"] .auth-footer {
+  border-color: #273754;
+  background: transparent;
+}
+
+[data-theme="dark"] .auth-divider span {
+  background: rgba(18, 27, 46, 0.86);
+}

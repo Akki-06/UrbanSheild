@@ -9,7 +9,7 @@ import "../styles/auth.css"
 
 export default function Login() {
   const navigate = useNavigate()
-  const { setIsLoggedIn } = useAuth()
+  const { setIsLoggedIn, setUser } = useAuth()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -27,11 +27,21 @@ export default function Login() {
       })
 
       // Store tokens in localStorage
+      const storedMeta = localStorage.getItem("user_meta")
+      const prevMeta = storedMeta ? JSON.parse(storedMeta) : null
+      const inferredAdmin = username?.toLowerCase().includes("admin")
+      const isAdmin = prevMeta?.isAdmin || inferredAdmin || false
+
       localStorage.setItem("access_token", response.data.access)
       localStorage.setItem("refresh_token", response.data.refresh)
+      localStorage.setItem("user_meta", JSON.stringify({
+        username,
+        isAdmin
+      }))
 
       // Update auth state
       setIsLoggedIn(true)
+      setUser({ username, isAdmin })
 
       // Redirect to dashboard
       navigate("/")

@@ -9,5 +9,9 @@ class NewsViewSet(ViewSet):
 
     @action(detail=False, methods=["get"])
     def incidents(self, request):
-        data = fetch_incident_news()
+        try:
+            limit = int(request.query_params.get("limit", 12))
+        except (TypeError, ValueError):
+            limit = 12
+        data = fetch_incident_news(limit=max(1, min(limit, 30)))
         return Response(data)

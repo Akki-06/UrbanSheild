@@ -4,7 +4,12 @@ from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.views import APIView
+
+from apps.core.utils import haversine, UTTARAKHAND_BOUNDS, is_within_uttarakhand
+
+import requests
 
 from apps.core.services.dijkstra_route_service import compute_smart_route
 from apps.core.services.evacuation_service import compute_evacuation_route, check_user_in_danger_zone
@@ -14,6 +19,7 @@ from apps.core.serializers import (
     DisasterAlertSerializer, EvacuationZoneSerializer
 )
 from apps.disasters.models import Disaster
+from apps.traffic.models import TrafficIncident
 
 
 # Create your views here.
@@ -244,4 +250,85 @@ class EvacuationZoneViewSet(viewsets.ModelViewSet):
         zones = EvacuationZone.objects.filter(disaster_id=disaster_id).order_by('zone_number')
         serializer = EvacuationZoneSerializer(zones, many=True)
         return Response(serializer.data)
+
+
+# ---------------------------------------------------------------------------
+# simple search/geocode endpoints used by the React frontend
+# ---------------------------------------------------------------------------
+
+class SearchView(APIView):
+    """Lookup a place name within Uttarakhand via Nominatim."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+        if not query:
+            return Response([], status=200)
+
+        bounds = UTTARAKHAND_BOUNDS
+        viewbox = (
+            f"{bounds['min_lon']},{bounds['min_lat']}"
+            f",{bounds['max_lon']},{bounds['max_lat']}"
+        )
+        try:
+            resp = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": query,
+                    "format": "json",
+                    "addressdetails": 1,
+                    "limit": 5,
+                    "viewbox": viewbox,
+                    "bounded": 1,
+                },
+                headers={"User-Agent": "UrbanShield/1.0 (contact@urbanshield.example)"},
+                timeout=10,
+            )
+            results = resp.json()
+        except Exception:
+            return Response([], status=200)
+
+        filtered = []
+        for item in results:
+            try:
+                lat = float(item.get("lat"))
+                lon = float(item.get("lon"))
+            except (TypeError, ValueError):
+                continue
+            if is_within_uttarakhand(lat, lon):
+                filtered.append({
+                    "name": item.get("display_name"),
+                    "lat": lat,
+                    "lon": lon,
+                })
+        return Response(filtered)
+
+
+class SearchInfoView(APIView):
+    """Return counts of traffic & disasters within a radius around a point."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        try:
+            lat = float(request.query_params.get("lat"))
+            lon = float(request.query_params.get("lon"))
+        except (TypeError, ValueError):
+            return Response({"error": "invalid coordinates"}, status=400)
+
+        radius_km = float(request.query_params.get("radius", 10))
+
+        tcount = 0
+        for t in TrafficIncident.objects.all():
+            if haversine(lat, lon, t.latitude, t.longitude) <= radius_km:
+                tcount += 1
+
+        dcount = 0
+        for d in Disaster.objects.all():
+            if haversine(lat, lon, d.latitude, d.longitude) <= radius_km:
+                dcount += 1
+
+        return Response({
+            "traffic_count": tcount,
+            "disaster_count": dcount,
+        })
 

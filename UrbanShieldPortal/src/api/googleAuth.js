@@ -12,6 +12,10 @@ export const handleGoogleSuccess = async (credentialResponse) => {
     // Store tokens
     localStorage.setItem("access_token", response.data.access)
     localStorage.setItem("refresh_token", response.data.refresh)
+    localStorage.setItem("user_meta", JSON.stringify({
+      username: response.data?.user?.username || "GoogleUser",
+      isAdmin: false
+    }))
 
     return {
       success: true,
