@@ -19,7 +19,7 @@ from apps.core.utils import haversine, UTTARAKHAND_BOUNDS, is_within_uttarakhand
 from apps.core.services.earthquake_service import fetch_earthquakes_uttarakhand
 from apps.core.services.weather_service import fetch_uttarakhand_weather_disasters
 from apps.core.services.dijkstra_route_service import find_best_route
-
+from apps.core.services.escalation_service import escalate_disaster
 
 class DisasterViewSet(viewsets.ModelViewSet):
     serializer_class = DisasterSerializer
@@ -46,6 +46,7 @@ class DisasterViewSet(viewsets.ModelViewSet):
             raise ValidationError("Only Uttarakhand incidents allowed.")
 
         serializer.save()
+        escalate_disaster()
 
     # ----------------------------------------
     # SMART RESPONSE PLAN

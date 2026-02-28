@@ -18,6 +18,9 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
     region = models.CharField(max_length=100, null=True, blank=True)
     admin_key = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Google OAuth
+    google_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.role}"

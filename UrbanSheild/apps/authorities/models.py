@@ -8,6 +8,7 @@ class Authority(models.Model):
         ('police', 'Police'),
         ('fire', 'Fire Department'),
         ('medical', 'Medical Emergency'),
+        ('sdrf', 'SDRF'),
     ]
 
     name = models.CharField(max_length=255)

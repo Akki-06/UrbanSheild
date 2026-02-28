@@ -5,7 +5,9 @@ import {
   Marker,
   Popup,
   GeoJSON,
-  useMap
+  Polyline,
+  useMap,
+  useMapEvents
 } from "react-leaflet"
 
 import L from "leaflet"
@@ -54,43 +56,163 @@ export default function MapView() {
   const [showDisasters, setShowDisasters] = useState(false)
   const [showPolice, setShowPolice] = useState(false)
   const [showFire, setShowFire] = useState(false)
+  const [showHospital, setShowHospital] = useState(false)
+  const [showHelpCentersGroup, setShowHelpCentersGroup] = useState(false)
 
   const [trafficLoading, setTrafficLoading] = useState(false)
   const [disasterLoading, setDisasterLoading] = useState(false)
   const [policeLoading, setPoliceLoading] = useState(false)
   const [fireLoading, setFireLoading] = useState(false)
+  const [hospitalLoading, setHospitalLoading] = useState(false)
 
   const [policeFeatures, setPoliceFeatures] = useState([])
   const [fireFeatures, setFireFeatures] = useState([])
+  const [hospitalFeatures, setHospitalFeatures] = useState([])
+  const [routeGeometry, setRouteGeometry] = useState(null)        // GeoJSON returned from OSRM
 
-  // 🔵 Fetch traffic from backend
-  const fetchTrafficData = () => {
-    setTrafficLoading(true)
-    api.get("traffic/")
-      .then(res => {
-        setTraffic(res.data)
-        setShowTraffic(true)
-      })
-      .catch(err => {
-        console.error("Traffic fetch error:", err)
-        alert("Failed to fetch traffic data")
-      })
-      .finally(() => setTrafficLoading(false))
+  // smart-routing state
+  const [start, setStart] = useState(null)            // [lat, lon]
+  const [end, setEnd] = useState(null)
+  const [selecting, setSelecting] = useState(null)    // "start" | "end" | null
+  const [routeCoordinates, setRouteCoordinates] = useState([])
+
+  const distance = (a, b) => {
+    // simple euclidean on lat/lon (good enough for nearby points)
+    const dLat = a[0] - b[0]
+    const dLon = a[1] - b[1]
+    return Math.sqrt(dLat * dLat + dLon * dLon)
   }
 
-  // 🔴 Fetch disasters from backend
-  const fetchDisasterData = () => {
-    setDisasterLoading(true)
-    api.get("disasters/")
+  // marker icons for routing endpoints
+  const getPointIcon = (type) => {
+    const cfg = {
+      start: { bg: '#10b981', icon: '🟢' },
+      end: { bg: '#ef4444', icon: '🔴' }
+    }[type] || { bg: '#6b7280', icon: '⚪' }
+    return L.divIcon({
+      html: `
+        <div style="
+          background: ${cfg.bg};
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          color: white;
+        ">
+          ${cfg.icon}
+        </div>
+      `,
+      iconSize: [24, 24],
+      className: 'point-marker'
+    })
+  }
+
+  // component to handle map clicks while selecting
+  function MapClickHandler() {
+    useMapEvents({
+      click(e) {
+        if (selecting === 'start') {
+          setStart([e.latlng.lat, e.latlng.lng])
+          setSelecting(null)
+        } else if (selecting === 'end') {
+          setEnd([e.latlng.lat, e.latlng.lng])
+          setSelecting(null)
+        }
+      }
+    })
+    return null
+  }
+
+  // smart route fetching - now uses backend Dijkstra algorithm that considers traffic & disasters
+  const fetchSmartRoute = () => {
+    if (!start || !end) return
+    api.get('route/smart_route/', {
+      params: {
+        start_lat: start[0],
+        start_lon: start[1],
+        end_lat: end[0],
+        end_lon: end[1]
+      }
+    })
       .then(res => {
-        setDisasters(res.data)
-        setShowDisasters(true)
+        // Backend returns geojson_route (GeoJSON geometry) and route_nodes (array of [lat,lon])
+        const geometry = res.data?.geojson_route
+        const nodes = res.data?.route_nodes || []
+        
+        if (geometry && geometry.coordinates) {
+          // Convert GeoJSON coordinates [lon,lat] to Leaflet format [lat,lon]
+          const leafletCoords = geometry.coordinates.map(coord => [coord[1], coord[0]])
+          setRouteCoordinates(leafletCoords)
+        } else if (nodes.length > 0) {
+          // Fallback to route_nodes if geometry is not available
+          setRouteCoordinates(nodes)
+        } else {
+          alert('No route found')
+        }
       })
       .catch(err => {
-        console.error("Disaster fetch error:", err)
-        alert("Failed to fetch disaster data")
+        console.error('smart route error', err)
+        alert('Failed to fetch route')
       })
-      .finally(() => setDisasterLoading(false))
+  }
+
+  const clearSmartRoute = () => {
+    setStart(null)
+    setEnd(null)
+    setRouteCoordinates([])
+    setSelecting(null)
+  }
+
+  // 🔵 Fetch traffic from backend (may return realtime TomTom points or
+  // simulated data).  The backend exposes `traffic/fetch_real/` for direct
+  // TomTom refresh; we can hit it before reading the list.
+  const fetchTrafficData = () => {
+    setTrafficLoading(true)
+    api.get("traffic/fetch_real/")
+      .catch(() => {
+        /* ignore; maybe API key missing */
+      })
+      .finally(() => {
+        api.get("traffic/")
+          .then(res => {
+            setTraffic(res.data)
+            setShowTraffic(true)
+          })
+          .catch(err => {
+            console.error("Traffic fetch error:", err)
+            alert("Failed to fetch traffic data")
+          })
+          .finally(() => setTrafficLoading(false))
+      })
+  }
+
+  // 🔴 Fetch disasters from backend (returns real incidents added by server)
+  // The backend may periodically call external APIs (USGS/OpenWeather) via its
+  // own management commands or when you hit the fetch endpoints.  We simply
+  // load whatever is currently stored in the database.
+  const fetchDisasterData = () => {
+    setDisasterLoading(true)
+    // optionally hit server endpoints to refresh from external sources (rate limited)
+    Promise.all([
+      api.get("disasters/fetch_earthquakes/"),
+      api.get("disasters/fetch_weather/")
+    ]).catch(() => {
+      // ignore errors from refresh; still call main list
+    }).finally(() => {
+      api.get("disasters/")
+        .then(res => {
+          setDisasters(res.data)
+          setShowDisasters(true)
+        })
+        .catch(err => {
+          console.error("Disaster fetch error:", err)
+          alert("Failed to fetch disaster data")
+        })
+        .finally(() => setDisasterLoading(false))
+    })
   }
 
   // 🚓 Police stations geojson (local file)
@@ -125,6 +247,22 @@ export default function MapView() {
       .finally(() => setFireLoading(false))
   }
 
+  // 🏥 Hospital locations geojson (local public file)
+  const fetchHospitalData = () => {
+    setHospitalLoading(true)
+    fetch("/uttarakhand_hospitals.geojson")
+      .then(res => res.json())
+      .then(data => {
+        setHospitalFeatures(data.features || [])
+        setShowHospital(true)
+      })
+      .catch(err => {
+        console.error("Hospital fetch error:", err)
+        alert("Failed to load hospital data")
+      })
+      .finally(() => setHospitalLoading(false))
+  }
+
   // 🗺 Fetch Uttarakhand boundary
   useEffect(() => {
     fetch("/uttarakhand.geojson")
@@ -141,6 +279,26 @@ export default function MapView() {
     t.longitude,
     t.congestion_level / 10   // normalize to 0-1 scale
   ])
+
+  // polling side‑effects
+  useEffect(() => {
+    let interval
+    if (showTraffic) {
+      // initial load and repeat every 10 minutes
+      fetchTrafficData()
+      interval = setInterval(fetchTrafficData, 10 * 60 * 1000)
+    }
+    return () => clearInterval(interval)
+  }, [showTraffic])
+
+  useEffect(() => {
+    let interval
+    if (showDisasters) {
+      fetchDisasterData()
+      interval = setInterval(fetchDisasterData, 10 * 60 * 1000)
+    }
+    return () => clearInterval(interval)
+  }, [showDisasters])
 
   // 🔥 Disaster icon logic with flame symbol and colored backdrop (consistent with reference screenshot)
   const getIcon = (type, severity) => {
@@ -187,7 +345,8 @@ export default function MapView() {
   const getFacilityIcon = (type) => {
     const cfg = {
       police: { bg: '#2563eb', icon: '🚓' },
-      fire: { bg: '#ef4444', icon: '🚒' }
+      fire: { bg: '#ef4444', icon: '🚒' },
+      hospital: { bg: '#10b981', icon: '🏥' }
     }[type] || { bg: '#6b7280', icon: '❓' }
 
     return L.divIcon({
@@ -216,6 +375,46 @@ export default function MapView() {
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString()
   }
+
+  // 🧭 find nearest police/fire station and request route via OSRM
+  const handleRoute = (disaster) => {
+    console.log('route button clicked for', disaster)
+    const start = [disaster.latitude, disaster.longitude]
+    let nearest = null
+    let minDist = Infinity
+    const facilities = [
+      ...policeFeatures.map(f => ({ ...f, _type: 'police' })),
+      ...fireFeatures.map(f => ({ ...f, _type: 'fire' }))
+    ]
+    console.log('available facilities', facilities.length)
+    facilities.forEach(f => {
+      const [lon, lat] = f.geometry.coordinates
+      const d = distance(start, [lat, lon])
+      if (d < minDist) {
+        minDist = d
+        nearest = { coord: [lat, lon], type: f._type, name: f.properties.name }
+      }
+    })
+    if (!nearest) {
+      alert('No police or fire stations are currently loaded')
+      return
+    }
+
+    console.log('nearest facility', nearest)
+    const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${nearest.coord[1]},${nearest.coord[0]}?overview=full&geometries=geojson`
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (data.routes && data.routes.length) {
+          setRouteGeometry(data.routes[0].geometry)
+        } else {
+          console.warn('no routes returned', data)
+        }
+      })
+      .catch(err => console.error('OSRM error', err))
+  }
+
+  const clearRoute = () => setRouteGeometry(null)
 
   // 🎯 Get severity badge color
   const getSeverityBadgeColor = (severity) => {
@@ -265,6 +464,25 @@ export default function MapView() {
                 <h3 style={{ margin: '0 0 8px 0', color: '#1f2937' }}>
                   {d.disaster_type.charAt(0).toUpperCase() + d.disaster_type.slice(1)}
                 </h3>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()       // prevent Leaflet from closing popup
+                    handleRoute(d)
+                  }}
+                  style={{
+                    marginBottom: '8px',
+                    padding: '6px 10px',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Find nearest help center
+                </button>
                 
                 <div style={{ marginBottom: '8px' }}>
                   <span style={{
@@ -313,6 +531,22 @@ export default function MapView() {
           </Marker>
         ))}
 
+        {/* Smart-routing click handler (always mounted) */}
+        <MapClickHandler />
+
+        {/* start/end markers */}
+        {start && (
+          <Marker position={start} icon={getPointIcon('start')} />
+        )}
+        {end && (
+          <Marker position={end} icon={getPointIcon('end')} />
+        )}
+
+        {/* route drawn from backend */}
+        {routeCoordinates.length > 0 && (
+          <Polyline positions={routeCoordinates} color="blue" weight={5} />
+        )}
+
         {/* Police/Fire Stations */}
         {showPolice && policeFeatures.map(f => {
           const [lon, lat] = f.geometry.coordinates
@@ -338,9 +572,36 @@ export default function MapView() {
             </Marker>
           )
         })}
+        {showHospital && hospitalFeatures.map(f => {
+          const [lon, lat] = f.geometry.coordinates
+          return (
+            <Marker
+              key={f.id}
+              position={[lat, lon]}
+              icon={getFacilityIcon('hospital')}
+            >
+              <Popup>
+                <div style={{ fontSize: '13px' }}>
+                  <strong>{f.properties.name || 'Hospital'}</strong>
+                  {f.properties.phone && (
+                    <div>📞 {f.properties.phone}</div>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          )
+        })}
+
+        {/* Route polyline (if generated) */}
+        {routeGeometry && (
+          <GeoJSON
+            data={routeGeometry}
+            style={{ color: '#10b981', weight: 4 }}
+          />
+        )}
 
         {/* Disaster Legend */}
-        <DisasterLegend showFacilities={showPolice || showFire} />
+        <DisasterLegend showFacilities={showPolice || showFire || showHospital} />
 
       </MapContainer>
 
@@ -446,6 +707,241 @@ export default function MapView() {
             <span>{disasterLoading ? 'Loading...' : showDisasters ? 'Hide Disasters' : 'Show Disasters'}</span>
           </button>
 
+          {/* Help Centers group outer toggle */}
+          <button
+            onClick={() => setShowHelpCentersGroup(prev => !prev)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: showHelpCentersGroup ? '#10b981' : '#e5e7eb',
+              color: showHelpCentersGroup ? 'white' : '#374151',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              fontSize: '13px',
+              transition: 'all 0.2s'
+            }}
+          >
+            <span>🩺</span>
+            <span>Help Centers</span>
+          </button>
+
+          {showHelpCentersGroup && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginLeft: '12px' }}>
+              {/* Police Toggle Button */}
+              <button
+                onClick={() => {
+                  if (showPolice) {
+                    setShowPolice(false)
+                  } else {
+                    fetchPoliceData()
+                  }
+                }}
+                disabled={policeLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  backgroundColor: showPolice ? '#2563eb' : '#e5e7eb',
+                  color: showPolice ? 'white' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: policeLoading ? 'not-allowed' : 'pointer',
+                  fontWeight: '500',
+                  fontSize: '13px',
+                  transition: 'all 0.2s',
+                  opacity: policeLoading ? 0.7 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!policeLoading) {
+                    e.target.style.transform = 'translateY(-2px)'
+                    e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!policeLoading) {
+                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.boxShadow = 'none'
+                  }
+                }}
+              >
+                <span>{policeLoading ? '⏳' : showPolice ? '✓' : '○'}</span>
+                <span>{policeLoading ? 'Loading...' : showPolice ? 'Hide Police' : 'Show Police'}</span>
+              </button>
+
+              {/* Fire Station Toggle Button */}
+              <button
+                onClick={() => {
+                  if (showFire) {
+                    setShowFire(false)
+                  } else {
+                    fetchFireData()
+                  }
+                }}
+                disabled={fireLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  backgroundColor: showFire ? '#ef4444' : '#e5e7eb',
+                  color: showFire ? 'white' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: fireLoading ? 'not-allowed' : 'pointer',
+                  fontWeight: '500',
+                  fontSize: '13px',
+                  transition: 'all 0.2s',
+                  opacity: fireLoading ? 0.7 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!fireLoading) {
+                    e.target.style.transform = 'translateY(-2px)'
+                    e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!fireLoading) {
+                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.boxShadow = 'none'
+                  }
+                }}
+              >
+                <span>{fireLoading ? '⏳' : showFire ? '✓' : '○'}</span>
+                <span>{fireLoading ? 'Loading...' : showFire ? 'Hide Fire' : 'Show Fire'}</span>
+              </button>
+
+              {/* Hospital Toggle Button */}
+              <button
+                onClick={() => {
+                  if (showHospital) {
+                    setShowHospital(false)
+                  } else {
+                    fetchHospitalData()
+                  }
+                }}
+                disabled={hospitalLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  backgroundColor: showHospital ? '#10b981' : '#e5e7eb',
+                  color: showHospital ? 'white' : '#374151',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: hospitalLoading ? 'not-allowed' : 'pointer',
+                  fontWeight: '500',
+                  fontSize: '13px',
+                  transition: 'all 0.2s',
+                  opacity: hospitalLoading ? 0.7 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!hospitalLoading) {
+                    e.target.style.transform = 'translateY(-2px)'
+                    e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!hospitalLoading) {
+                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.boxShadow = 'none'
+                  }
+                }}
+              >
+                <span>{hospitalLoading ? '⏳' : showHospital ? '✓' : '○'}</span>
+                <span>{hospitalLoading ? 'Loading...' : showHospital ? 'Hide Hospital' : 'Show Hospital'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Routing controls */}
+          <button
+            onClick={() => setSelecting('start')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: selecting === 'start' ? '#10b981' : '#e5e7eb',
+              color: selecting === 'start' ? 'white' : '#374151',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              fontSize: '13px',
+              transition: 'all 0.2s'
+            }}
+          >
+            Select Start
+          </button>
+
+          <button
+            onClick={() => setSelecting('end')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: selecting === 'end' ? '#ef4444' : '#e5e7eb',
+              color: selecting === 'end' ? 'white' : '#374151',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              fontSize: '13px',
+              transition: 'all 0.2s'
+            }}
+          >
+            Select Destination
+          </button>
+
+          <button
+            onClick={fetchSmartRoute}
+            disabled={!start || !end}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: !start || !end ? 'not-allowed' : 'pointer',
+              fontWeight: '500',
+              fontSize: '13px',
+              transition: 'all 0.2s'
+            }}
+          >
+            Find Route
+          </button>
+
+          <button
+            onClick={clearSmartRoute}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: '#f87171',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              fontSize: '13px',
+              transition: 'all 0.2s'
+            }}
+          >
+            Clear Route
+          </button>
+
+
         </div>
 
         {/* Legend Shortcut */}
@@ -459,7 +955,29 @@ export default function MapView() {
           <p style={{ margin: '0 0 4px 0', fontWeight: '600' }}>Status:</p>
           <p style={{ margin: '2px 0' }}>🔵 Traffic: {showTraffic ? traffic.length + ' points' : '\u2014'}</p>
           <p style={{ margin: '2px 0' }}>🔴 Disasters: {showDisasters ? disasters.length + ' locations' : '\u2014'}</p>
+          <p style={{ margin: '2px 0' }}>🚓 Police: {showPolice ? policeFeatures.length + ' stations' : '\u2014'}</p>
+          <p style={{ margin: '2px 0' }}>🚒 Fire: {showFire ? fireFeatures.length + ' stations' : '\u2014'}</p>
+          <p style={{ margin: '2px 0' }}>🏥 Hospital: {showHospital ? hospitalFeatures.length + ' locations' : '\u2014'}</p>
         </div>
+
+        {/* route control */}
+        {routeGeometry && (
+          <button
+            onClick={clearRoute}
+            style={{
+              marginTop: '8px',
+              padding: '6px 10px',
+              backgroundColor: '#f87171',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Clear route
+          </button>
+        )}
       </div>
 
     </div>
