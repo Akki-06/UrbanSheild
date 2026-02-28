@@ -22,6 +22,7 @@ from apps.core.services.weather_service import fetch_uttarakhand_weather_disaste
 from apps.core.services.dijkstra_route_service import find_best_route
 from apps.core.services.escalation_service import escalate_disaster
 
+
 class DisasterViewSet(viewsets.ModelViewSet):
     serializer_class = DisasterSerializer
 
@@ -59,8 +60,10 @@ class DisasterViewSet(viewsets.ModelViewSet):
         if not is_within_uttarakhand(lat, lon):
             raise ValidationError("Only Uttarakhand incidents allowed.")
 
-        serializer.save()
-        escalate_disaster()
+        disaster = serializer.save()
+
+        # Trigger automatic escalation logic
+        escalate_disaster(disaster)
 
     # ----------------------------------------
     # SMART RESPONSE PLAN
@@ -74,7 +77,6 @@ class DisasterViewSet(viewsets.ModelViewSet):
         best_route_score = float("inf")
         shelter_distance = None
 
-        # 🔒 Restrict shelters to Uttarakhand
         shelters = Shelter.objects.filter(
             is_active=True,
             latitude__gte=UTTARAKHAND_BOUNDS["min_lat"],
@@ -83,7 +85,6 @@ class DisasterViewSet(viewsets.ModelViewSet):
             longitude__lte=UTTARAKHAND_BOUNDS["max_lon"],
         )
 
-        # 🔒 Restrict traffic to Uttarakhand
         traffic_points = TrafficIncident.objects.filter(
             latitude__gte=UTTARAKHAND_BOUNDS["min_lat"],
             latitude__lte=UTTARAKHAND_BOUNDS["max_lat"],
@@ -119,7 +120,6 @@ class DisasterViewSet(viewsets.ModelViewSet):
                 nearest_shelter = shelter
                 shelter_distance = distance
 
-        # 🔒 Restrict authorities to Uttarakhand
         nearest_authority = None
         min_authority_distance = float("inf")
 
@@ -145,7 +145,7 @@ class DisasterViewSet(viewsets.ModelViewSet):
         })
 
     # ----------------------------------------
-    # ESCALATION
+    # MANUAL ESCALATION ENDPOINT
     # ----------------------------------------
     @action(detail=True, methods=["post"])
     def escalate(self, request, pk=None):
@@ -186,15 +186,15 @@ Disaster Type: {disaster.disaster_type}
 Severity: {disaster.severity}
 Location: {lat}, {lon}
 Status: {disaster.status}
+
 Immediate action recommended.
 """,
-                from_email=None,
+                from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[recipient],
                 fail_silently=False,
             )
             email_sent = True
-        except Exception as exc:
-            # Log but continue to record escalation
+        except Exception:
             email_sent = False
 
         EscalationLog.objects.create(
@@ -206,6 +206,7 @@ Immediate action recommended.
         return Response({
             "message": "Escalation triggered successfully",
             "authority_notified": nearest_authority.name,
+            "email_sent": email_sent
         })
 
     # ----------------------------------------
