@@ -256,7 +256,7 @@ Separation of concerns ensures scalability and maintainability.
 ## Backend Setup
 
 ```bash
-git clone https://github.com/yourusername/UrbanShield.git
+git clone https://github.com/Akki-06/UrbanShield.git
 cd UrbanShield
 python -m venv venv
 venv\Scripts\activate
