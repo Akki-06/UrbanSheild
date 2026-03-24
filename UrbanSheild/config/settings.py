@@ -9,6 +9,8 @@ load_dotenv()
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+# Admin registration key — must be set in .env for admin accounts to be creatable
+URBANSHIELD_ADMIN_KEY = os.getenv("URBANSHIELD_ADMIN_KEY", "__unset__")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,7 +33,7 @@ SECRET_KEY = 'django-insecure-r9h74vgl*l)9#*!2pt!j2z88w*(*@h8!k^&^5&ha=yi@82pa=7
 
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
 
 
 

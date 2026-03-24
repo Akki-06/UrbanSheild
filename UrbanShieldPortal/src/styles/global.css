@@ -82,9 +82,19 @@ body {
   overflow: hidden;
 }
 
+body.landing-scroll {
+  overflow: auto;
+  height: auto;
+}
+
 #root {
   width: 100vw;
   height: 100vh;
+}
+
+#root.landing-scroll {
+  height: auto;
+  overflow: visible;
 }
 
 .app-layout {

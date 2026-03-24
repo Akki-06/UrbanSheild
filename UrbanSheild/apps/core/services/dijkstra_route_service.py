@@ -5,6 +5,12 @@ import requests
 from apps.disasters.models import Disaster
 from apps.traffic.models import TrafficIncident
 from apps.shelters.models import Shelter
+from apps.core.utils import haversine as _haversine_km
+
+# Maximum distance in km between two nodes for them to be connected in the
+# routing graph.  Uttarakhand spans ~330km E-W and ~340km N-S, so 80km gives
+# reasonable granularity while keeping the graph sparse.
+_GRAPH_CONNECTION_THRESHOLD_KM = 80
 
 
 # ---------------------------------------------------------------------------
@@ -70,11 +76,19 @@ def compute_smart_route(start_coord, end_coord):
 
 
 
-def distance(a, b):
-    return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+def _coord_distance_km(a, b):
+    """Return the great-circle distance in kilometres between two (lat, lon) tuples."""
+    return _haversine_km(a[0], a[1], b[0], b[1])
 
 
 def build_graph(nodes):
+    """Build a weighted adjacency list.
+
+    Two nodes are connected only when they are within
+    ``_GRAPH_CONNECTION_THRESHOLD_KM`` kilometres of each other.  Weights are
+    in kilometres plus congestion / blockage penalties so that Dijkstra can
+    produce a meaningful cost value.
+    """
     graph = {}
 
     for i, node_a in enumerate(nodes):
@@ -84,13 +98,18 @@ def build_graph(nodes):
             if i == j:
                 continue
 
-            d = distance(node_a["coord"], node_b["coord"])
+            d_km = _coord_distance_km(node_a["coord"], node_b["coord"])
 
-            if d < 2:
-                weight = d * 10 + node_b.get("congestion", 0) * 5
+            if d_km <= _GRAPH_CONNECTION_THRESHOLD_KM:
+                # Base weight is the real-world distance in km.
+                # Congestion adds up to ~50 km equivalent of penalty.
+                # A fully blocked road adds 500 km equivalent so it's
+                # only chosen when there is truly no other path.
+                congestion = node_b.get("congestion", 0)
+                weight = d_km + congestion * 5
 
                 if node_b.get("blocked", False):
-                    weight += 100
+                    weight += 500
 
                 graph[i].append((j, weight))
 
@@ -178,15 +197,10 @@ def find_best_route(disaster_id):
     if not shelters.exists():
         return {"message": "No route found"}
 
-    # pick the closest shelter by simple Euclidean distance (doesn't need to be
-    # perfect since the heavy lifting happens in compute_smart_route)
-    def _euclidean(a, b):
-        return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
-
     start = (disaster.latitude, disaster.longitude)
     closest = min(
         shelters,
-        key=lambda s: _euclidean(start, (s.latitude, s.longitude))
+        key=lambda s: _coord_distance_km(start, (s.latitude, s.longitude))
     )
     end = (closest.latitude, closest.longitude)
 

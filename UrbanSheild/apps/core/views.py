@@ -125,9 +125,10 @@ class UserLocationViewSet(viewsets.ViewSet):
                 continue
 
             # Check if within alert radius
+            # NOTE: pass the Disaster object directly — the function reads .latitude/.longitude
             if check_user_in_danger_zone(
-                user_location, 
-                (disaster.latitude, disaster.longitude),
+                user_location,
+                disaster,
                 radius_km=prefs.alert_radius_km
             ):
                 # Check disaster type and severity
