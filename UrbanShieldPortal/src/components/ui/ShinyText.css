@@ -1,0 +1,26 @@
+.shiny-text {
+  display: inline-block;
+  position: relative;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.shiny-text--animated {
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0)       0%,
+    rgba(255, 255, 255, 0)       30%,
+    rgba(255, 255, 255, 0.75)   50%,
+    rgba(255, 255, 255, 0)       70%,
+    rgba(255, 255, 255, 0)      100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shiny-sweep linear infinite;
+}
+
+@keyframes shiny-sweep {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
