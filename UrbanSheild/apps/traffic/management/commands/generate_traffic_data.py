@@ -28,7 +28,7 @@ class Command(BaseCommand):
 
         # Major cities and highways in Uttarakhand with their approximate coordinates
         traffic_zones = [
-            # National Highway 119 (Delhi to Dehradun)
+            # National Highway (Dehradun to Roorkee)
             {'name': 'NH119 - Saharanpur', 'lat': 29.9685, 'lon': 77.5619, 'radius': 0.03},
             {'name': 'NH119 - Roorkee Junction', 'lat': 29.8564, 'lon': 77.8834, 'radius': 0.02},
             {'name': 'NH119 - Mandi Bypass', 'lat': 29.5891, 'lon': 78.0123, 'radius': 0.04},
