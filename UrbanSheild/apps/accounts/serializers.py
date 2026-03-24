@@ -1,6 +1,13 @@
+import os
+
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from .models import UserProfile
+
+# Load the admin registration key from the environment.  Falls back to a
+# placeholder that will never match so that the admin path is disabled if the
+# variable is not configured.
+_ADMIN_KEY = os.getenv("URBANSHIELD_ADMIN_KEY", "__unset__")
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -24,7 +31,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         profile = UserProfile.objects.create(user=user)
 
         if role == "regional_admin":
-            if admin_key == "URBANSHIELD2026":
+            if _ADMIN_KEY != "__unset__" and admin_key == _ADMIN_KEY:
                 profile.role = "regional_admin"
                 user.is_staff = True
                 user.save()

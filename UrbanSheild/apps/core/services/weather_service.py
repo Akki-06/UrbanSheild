@@ -1,7 +1,11 @@
+import logging
+
 import requests
 from django.conf import settings
 from apps.disasters.models import Disaster
 from apps.core.utils import is_within_uttarakhand
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_uttarakhand_weather_disasters():
@@ -33,10 +37,16 @@ def fetch_uttarakhand_weather_disasters():
             "units": "metric"
         }
 
+        if not api_key:
+            logger.warning("OPENWEATHER_API_KEY not set — skipping weather fetch for %s", city)
+            continue
+
         try:
             response = requests.get(url, params=params, timeout=5)
+            response.raise_for_status()
             data = response.json()
-        except:
+        except Exception as exc:
+            logger.warning("Weather API request failed for %s: %s", city, exc)
             continue
 
         # 🌧 Heavy Rain → Flood

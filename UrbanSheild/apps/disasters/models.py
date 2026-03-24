@@ -1,8 +1,13 @@
+import logging
+
 from django.db import models
 from django.core.mail import send_mail
+from django.conf import settings
 
 from apps.core.utils import haversine
 from apps.authorities.models import Authority
+
+logger = logging.getLogger(__name__)
 
 
 class Disaster(models.Model):
@@ -96,25 +101,32 @@ class Disaster(models.Model):
                     nearest_authority = authority
 
             if nearest_authority:
-                send_mail(
-                    subject=f"Emergency Alert - {self.disaster_type.upper()}",
-                    message=f"""
-Disaster Type: {self.disaster_type}
-Severity: {self.severity}
-Location: {self.latitude}, {self.longitude}
-Status: CRITICAL
-
-Cluster detected in region.
-Immediate action required.
-""",
-                    from_email=None,
-                    recipient_list=[nearest_authority.email],
-                )
+                email_sent = False
+                try:
+                    send_mail(
+                        subject=f"Emergency Alert - {self.disaster_type.upper()}",
+                        message=(
+                            f"Disaster Type: {self.disaster_type}\n"
+                            f"Severity: {self.severity}\n"
+                            f"Location: {self.latitude}, {self.longitude}\n"
+                            f"Status: CRITICAL\n\n"
+                            f"Cluster detected in region. Immediate action required."
+                        ),
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[nearest_authority.email],
+                        fail_silently=False,
+                    )
+                    email_sent = True
+                except Exception as exc:
+                    logger.error(
+                        "Auto-escalation email failed for disaster %s: %s",
+                        self.pk, exc
+                    )
 
                 EscalationLog.objects.create(
                     disaster=self,
                     authority_name=nearest_authority.name,
-                    email_sent=True
+                    email_sent=email_sent,
                 )
 
 

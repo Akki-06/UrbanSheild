@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 
 from django.core.mail import send_mail
 from django.conf import settings
@@ -25,6 +26,7 @@ from apps.core.services.escalation_service import escalate_disaster
 
 class DisasterViewSet(viewsets.ModelViewSet):
     serializer_class = DisasterSerializer
+    permission_classes = [IsAuthenticated]
 
     # ----------------------------------------
     # 🔒 Restrict disasters to Uttarakhand
@@ -60,10 +62,9 @@ class DisasterViewSet(viewsets.ModelViewSet):
         if not is_within_uttarakhand(lat, lon):
             raise ValidationError("Only Uttarakhand incidents allowed.")
 
-        disaster = serializer.save()
-
-        # Trigger automatic escalation logic
-        escalate_disaster(disaster)
+        # Escalation is handled automatically inside Disaster.save()
+        # via the model's post-save hook so we don't call escalate_disaster() here.
+        serializer.save()
 
     # ----------------------------------------
     # SMART RESPONSE PLAN

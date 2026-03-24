@@ -7,10 +7,11 @@ from apps.disasters.views import DisasterViewSet, EscalationLogViewSet
 from apps.authorities.views import AuthorityViewSet
 from apps.traffic.views import TrafficIncidentViewSet
 from apps.core.views import (
-    RouteViewSet, UserLocationViewSet, UserAlertPreferenceViewSet, 
+    RouteViewSet, UserLocationViewSet, UserAlertPreferenceViewSet,
     DisasterAlertViewSet, EvacuationZoneViewSet,
-    SearchView, SearchInfoView
+    SearchView, SearchInfoView,
 )
+from apps.analytics.views import AnalyticsSummaryView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -39,4 +40,5 @@ urlpatterns = [
     path('api/search/info/', SearchInfoView.as_view(), name='search-info'),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/analytics/summary/', AnalyticsSummaryView.as_view(), name='analytics-summary'),
 ]
